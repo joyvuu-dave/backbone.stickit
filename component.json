@@ -1,0 +1,7 @@
+{
+  "name": "backbone.stickit",
+  "version": "0.6.3",
+  "main": "./backbone.stickit.js",
+  "dependencies": {
+  }
+}
