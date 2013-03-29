@@ -120,6 +120,7 @@
       this.remove = _.wrap(this.remove, function(oldRemove) {
         self.unstickit();
         if (oldRemove) oldRemove.call(self);
+        return self;
       });
     }
   });
@@ -171,7 +172,7 @@
   var getAttr = function(model, attr, config, context) {
     var val, retrieveVal = function(field) {
       var retrieved = config.escape ? model.escape(field) : model.get(field);
-      return _.isUndefined(retrieved) ? '' : retrieved;
+      return _.isUndefined(retrieved) || _.isNull(retrieved) ? '' : retrieved;
     };
     val = _.isArray(attr) ? _.map(attr, retrieveVal) : retrieveVal(attr);
     return config.onGet ? applyViewFn(context, config.onGet, val, config) : val;
@@ -354,19 +355,26 @@
       if (!selectConfig) {
         selectConfig = {};
         var getList = function($el) {
-          return $el.find('option').map(function() {
-              return {value:this.value, label:this.text};
+          return $el.map(function() {
+            return {value:this.value, label:this.text};
           }).get();
         };
         if ($el.find('optgroup').length) {
           list = {opt_labels:[]};
+          // Search for options without optgroup
+          if ($el.find('> option').length) {
+            list.opt_labels.push(undefined);
+            _.each($el.find('> option'), function(el) {
+              list[undefined] = getList($(el));
+            });
+          }
           _.each($el.find('optgroup'), function(el) {
             var label = $(el).attr('label');
             list.opt_labels.push(label);
-            list[label] = getList($(el));
+            list[label] = getList($(el).find('option'));
           });
         } else {
-          list = getList($el);
+          list = getList($el.find('option'));
         }
       }
 
@@ -378,7 +386,7 @@
         // Add a flag for default option at the beginning of the list.
         if (selectConfig.defaultOption) {
           optList = _.clone(optList);
-          optList.unshift('__default__'); 
+          optList.unshift('__default__');
         }
         _.each(optList, function(obj) {
           var option = $('<option/>'), optionVal = obj;
@@ -422,7 +430,7 @@
         return evaluatePath(context, list);
       };
       if (_.isString(list)) optList = evaluate(this, list);
-      else if (_.isFunction(list)) optList = applyViewFn(this, list, $el, options)
+      else if (_.isFunction(list)) optList = applyViewFn(this, list, $el, options);
       else optList = list;
 
       // Support Backbone.Collection and deserialize.
@@ -433,11 +441,13 @@
       } else {
         // If the optList is an object, then it should be used to define an optgroup. An
         // optgroup object configuration looks like the following:
+        //
         //     {
         //       'opt_labels': ['Looney Tunes', 'Three Stooges'],
         //       'Looney Tunes': [{id: 1, name: 'Bugs Bunny'}, {id: 2, name: 'Donald Duck'}],
         //       'Three Stooges': [{id: 3, name : 'moe'}, {id: 4, name : 'larry'}, {id: 5, name : 'curly'}]
         //     }
+        //
         _.each(optList.opt_labels, function(label) {
           var $group = $('<optgroup/>').attr('label', label);
           addSelectOptions(optList[label], $group, val);
