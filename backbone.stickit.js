@@ -59,7 +59,7 @@
       _.each(_.keys(bindings), function(selector) {
         var $el, options, modelAttr, config,
           binding = bindings[selector] || {},
-          bindKey = _.uniqueId();
+          bindId = _.uniqueId();
 
         // Support ':el' selector - special case selector for the view managed delegate.
         if (selector != ':el') $el = self.$(selector);
@@ -81,9 +81,10 @@
 
         modelAttr = config.observe;
 
-        // Create the model set options with a unique `bindKey` so that we
+        // Create the model set options with a unique `bindId` so that we
         // can avoid double-binding in the `change:attribute` event handler.
-        options = _.extend({bindKey:bindKey}, config.setOptions || {});
+        config.bindId = bindId;
+        options = _.extend({stickitChange:config}, config.setOptions || {});
 
         initializeAttributes(self, $el, config, model, modelAttr);
 
@@ -107,7 +108,8 @@
           // `modelAttr` may be an array of attributes or a single string value.
           _.each(_.flatten([modelAttr]), function(attr) {
             observeModelEvent(model, self, 'change:'+attr, function(model, val, options) {
-              if (options == null || options.bindKey != bindKey)
+              var changeId = options && options.stickitChange && options.stickitChange.bindId || null;
+              if (changeId != bindId)
                 updateViewBindEl(self, $el, config, getAttr(model, modelAttr, config, self), model);
             });
           });
@@ -183,13 +185,12 @@
 
   // Find handlers in `Backbone.Stickit._handlers` with selectors that match
   // `$el` and generate a configuration by mixing them in the order that they
-  // were found with the with the givne `binding`.
-  var getConfiguration = function($el, binding) {
+  // were found with the given `binding`.
+  var getConfiguration = Backbone.Stickit.getConfiguration = function($el, binding) {
     var handlers = [{
       updateModel: false,
-      updateView: true,
       updateMethod: 'text',
-      update: function($el, val, m, opts) { $el[opts.updateMethod](val); },
+      update: function($el, val, m, opts) { if ($el[opts.updateMethod]) $el[opts.updateMethod](val); },
       getVal: function($el, e, opts) { return $el[opts.updateMethod](); }
     }];
     _.each(Backbone.Stickit._handlers, function(handler) {
@@ -197,6 +198,10 @@
     });
     handlers.push(binding);
     var config = _.extend.apply(_, handlers);
+    // `updateView` is defaulted to false for configutrations with
+    // `visible`; otherwise, `updateView` is defaulted to true.
+    if (config.visible && !_.has(config, 'updateView')) config.updateView = false;
+    else if (!_.has(config, 'updateView')) config.updateView = true;
     delete config.selector;
     return config;
   };
@@ -215,18 +220,19 @@
     var props = ['autofocus', 'autoplay', 'async', 'checked', 'controls', 'defer', 'disabled', 'hidden', 'loop', 'multiple', 'open', 'readonly', 'required', 'scoped', 'selected'];
 
     _.each(config.attributes || [], function(attrConfig) {
-      var lastClass = '',
-        observed = attrConfig.observe || (attrConfig.observe = modelAttr),
-        updateAttr = function() {
-          var updateType = _.indexOf(props, attrConfig.name, true) > -1 ? 'prop' : 'attr',
-            val = getAttr(model, observed, attrConfig, view);
-          // If it is a class then we need to remove the last value and add the new.
-          if (attrConfig.name == 'class') {
-            $el.removeClass(lastClass).addClass(val);
-            lastClass = val;
-          }
-          else $el[updateType](attrConfig.name, val);
-        };
+      var lastClass = '', observed, updateAttr;
+      attrConfig = _.clone(attrConfig);
+      observed = attrConfig.observe || (attrConfig.observe = modelAttr),
+      updateAttr = function() {
+        var updateType = _.indexOf(props, attrConfig.name, true) > -1 ? 'prop' : 'attr',
+          val = getAttr(model, observed, attrConfig, view);
+        // If it is a class then we need to remove the last value and add the new.
+        if (attrConfig.name == 'class') {
+          $el.removeClass(lastClass).addClass(val);
+          lastClass = val;
+        }
+        else $el[updateType](attrConfig.name, val);
+      };
       _.each(_.flatten([observed]), function(attr) {
         observeModelEvent(model, view, 'change:' + attr, updateAttr);
       });
@@ -284,10 +290,10 @@
   Backbone.Stickit.addHandler([{
     selector: '[contenteditable="true"]',
     updateMethod: 'html',
-    events: ['keyup', 'change', 'paste', 'cut']
+    events: ['input', 'change']
   }, {
     selector: 'input',
-    events: ['keyup', 'change', 'paste', 'cut'],
+    events: ['propertychange', 'input', 'change'],
     update: function($el, val) { $el.val(val); },
     getVal: function($el) {
       var val = $el.val();
@@ -296,7 +302,7 @@
     }
   }, {
     selector: 'textarea',
-    events: ['keyup', 'change', 'paste', 'cut'],
+    events: ['propertychange', 'input', 'change'],
     update: function($el, val) { $el.val(val); },
     getVal: function($el) { return $el.val(); }
   }, {
