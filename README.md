@@ -261,6 +261,7 @@ Called for each binding after it is configured in the initial call to `stickit()
 ### visible and visibleFn
 
 When true, `visible` shows or hides the view element based on the model attribute's truthiness. `visible` may also be defined with a callback which should return a truthy value.
+The `updateView` option defaults to `false` when using `visible`. You must opt-in to `updateView` in order to have both view element visibility and value changes bound to the observed attribute.
 
 If more than the standard jQuery show/hide is required, then you can manually take control by defining `visibleFn` with a callback. 
 
@@ -277,7 +278,8 @@ If more than the standard jQuery show/hide is required, then you can manually ta
   bindings: {
     '#title': {
       observe: 'title',
-      visible: function(val, options) { return val == 'Mille Plateaux'; }
+      visible: function(val, options) { return val == 'Mille Plateaux'; },
+      updateView: true
     }
   }
 ```
@@ -305,7 +307,7 @@ The following is a list of the supported form elements, their binding details, a
  - input, textarea, and contenteditable
    - element value synced with model attribute value
    - input[type=number] will update the model with a Number value 
-   - `keyup`, `change`, `cut`, and `paste` events are used for handling
+   - `propertychange`, `input`, `change` events are used for handling
  - input[type=checkbox]
    - `checked` property determined by the truthiness of the model attribute or if the checkbox "value" attribute is defined, then its value is used to match against the model. If a binding selector matches multiple checkboxes then it is expected that the observed model attribute will be an array of values to match against the checkbox value attributes.
    - `change` event is used for handling
@@ -461,6 +463,21 @@ An object which is used as the set options when setting values in the model. Thi
   }
 ```
 
+### stickitChange
+
+A property that is passed into the set options when stickit changes a model attribute. The value of this property is assigned to the binding configuration.
+
+```javascript
+model.on('change:observed', function(m, v, options) {
+  if (options.stickitChange) {
+    ...
+  } else {
+    ...
+  }
+});
+
+```
+
 ## Attribute and Property Bindings
 
 ### attributes
@@ -589,8 +606,12 @@ MIT
 
 #### Master
 
+- The `bindKey` that was passed into the Backbone `change:attr` options was changed to `stickitChange` which is assigned the binding options which have a unique `bindId`.
+- Changed the default events for input, textarea, and contenteditable form elements from [`keyup`, `cut`, `paste`, `change`] to [`propertychange`, `input`, `change`].
 - Fixed a bug where "null" would show in Chrome when binding `attribute:null` to an element value.
 - Added handling for `observe` in function form.
+- When binding with `visible` the `{updateView:false}` property is defaulted.
+- Added Backbone.Stickit.getConfiguration which exposes the method of deriving configurations from handlers.
 
 #### 0.6.3
 
