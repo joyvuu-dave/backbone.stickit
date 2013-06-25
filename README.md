@@ -60,6 +60,8 @@ Uses `view.bindings` and `view.model` to setup bindings. Optionally, you can pas
 
 Removes event bindings from all models. Optionally, a model can be passed in which will remove events for the given model and its corresponding bindings configuration only. Unbinding will be taken care of automatically in `view.remove()`, but if you want to unbind early, use this.
 
+For each model that is unbound a `stickit:unstuck` event will be triggered.
+
 ## Bindings
 
 The `view.bindings` is a hash of jQuery or Zepto selector keys with binding configuration values. Similar to the callback definitions configured in `view.events`, bindings callbacks can be defined as the name of a method on the view or a direct function body.
@@ -258,6 +260,21 @@ Called for each binding after it is configured in the initial call to `stickit()
   }
 ```
 
+### destroy
+
+Called for each binding after it is unstuck from the model and view. Useful for tearing down third-party plugins or events that were configured in `initialze`.
+
+```javascript  
+  bindings: {
+    '#album': {
+      observe: 'Tomorrow's Harvest,
+      destroy: function($el, model, options) {
+        // Tear down any events or clean up.
+      }
+    }
+  }
+```
+
 ### visible and visibleFn
 
 When true, `visible` shows or hides the view element based on the model attribute's truthiness. `visible` may also be defined with a callback which should return a truthy value.
@@ -306,7 +323,6 @@ The following is a list of the supported form elements, their binding details, a
 
  - input, textarea, and contenteditable
    - element value synced with model attribute value
-   - input[type=number] will update the model with a Number value 
    - `propertychange`, `input`, `change` events are used for handling
  - input[type=checkbox]
    - `checked` property determined by the truthiness of the model attribute or if the checkbox "value" attribute is defined, then its value is used to match against the model. If a binding selector matches multiple checkboxes then it is expected that the observed model attribute will be an array of values to match against the checkbox value attributes.
@@ -338,14 +354,14 @@ Specify a list of events which will override stickit's default events for a form
 
 With the given `collection`, creates `<option>`s for the bound `<select>`, and binds their selected values to the observed model attribute. It is recommended to use `selectOptions` instead of pre-rendering select-options since Stickit will render them and can bind Objects, Arrays, and non-String values as data to the `<option>` values. The following are configuration options for binding:
 
- - `collection`: an object path of a collection relative to `window` or `view`/`this`, or a string function reference which returns a collection of objects. A collection should be either an  array of objects or Backbone.Collection.
+ - `collection`: an object path of a collection relative to `window` or `view`/`this`, or a string function reference which returns a collection of objects. A collection should be an array of objects, a Backbone.Collection or a value/label map.
  - `labelPath`: the path to the label value for select options within the collection of objects. Default value when undefined is `label`.
  - `valuePath`: the path to the values for select options within the collection of objects. When an options is selected, the value that is defined for the given option is set in the model. Leave this undefined if the whole object is the value or to use the default `value`.
  - `defaultOption`: an object with `label` and `value` keys, used to define a default option value. A common use case would be something like the following: `{label: "Choose one...", value: null}`.
 
 When bindings are initialized, Stickit will build the `<select>` element with the `<option>`s and bindings configured. `selectOptions` are not required - if left undefined, then Stickit will expect that the `<option>`s are pre-rendered and build the collection from the DOM.
 
-**Note:** if you are using Zepto and referencing object values for your select options, like in the second example, then you will need to also include the Zepto data module.
+**Note:** if you are using Zepto and referencing object values for your select options, like in the second example, then you will need to also include the Zepto data module. Also, `<select>` bindings are two-way bindings only - `updateView:false` will be ignored.
 
 The following example references a collection of stooges at `window.app.stooges` and uses the `age` attribute for labels and the `name` attribute for option values:  
 
@@ -419,6 +435,23 @@ Optgroups are supported, where the collection is formatted into an object with a
         },
         labelPath: 'name',
         valuePath: 'id'
+      }
+    }
+  }
+```
+
+It is often useful to have a lookup table for converting between underlying values which are actually stored and transmitted and the human-readable labels that represent them. Such a lookup table (an object like `{ value1: label1, value2: label2 }`) can be used to populate a select directly. By default, the options will be sorted alphabetically by label; pass a `comparator`function or property name string to override this ordering (which delegates to `_.sortBy`).
+
+```javascript
+  bindings: {
+    'select#sounds': {
+      observe: 'sound',
+      selectOptions: {
+        collection: {
+          moo: 'cow',
+          baa: 'sheep',
+          oink: 'pig'
+        }
       }
     }
   }
@@ -606,9 +639,13 @@ MIT
 
 #### Master
 
-- The `bindKey` that was passed into the Backbone `change:attr` options was changed to `stickitChange` which is assigned the binding options which have a unique `bindId`.
-- Changed the default events for input, textarea, and contenteditable form elements from [`keyup`, `cut`, `paste`, `change`] to [`propertychange`, `input`, `change`].
+- **Breaking Change**: the `bindKey` that was passed into the Backbone `change:attr` (undocumented) options was changed to `stickitChange` which is assigned the binding options which have a unique `bindId`.
+- **Breaking Change**: the default events for input, textarea, and contenteditable form elements from [`keyup`, `cut`, `paste`, `change`] to [`propertychange`, `input`, `change`].
+- **Breaking Change**: removed support for `input[type="number"]`. Instead, use `onSet` to format Number values, if needed.
+- Added the `destroy` binding callback to compliment `initialize`.
+- Trigger `stickit:unstick` for each model that is unbound in `unstickit` (or `view.remove`).
 - Fixed a bug where "null" would show in Chrome when binding `attribute:null` to an element value.
+- Fixed a bug where optgroup `<select>` handlers were rendering multiple `collection.defaultOptions`.
 - Added handling for `observe` in function form.
 - When binding with `visible` the `{updateView:false}` property is defaulted.
 - Added Backbone.Stickit.getConfiguration which exposes the method of deriving configurations from handlers.

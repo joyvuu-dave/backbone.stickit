@@ -33,11 +33,17 @@
     // `this.$el`. If the optional `model` parameter is defined, then only
     // delete bindings for the given `model` and its corresponding view events.
     unstickit: function(model) {
-      _.each(this._modelBindings, _.bind(function(binding, i) {
+      var models = [], self = this;
+      _.each(this._modelBindings, function(binding, i) {
         if (model && binding.model !== model) return false;
         binding.model.off(binding.event, binding.fn);
-        delete this._modelBindings[i];
-      }, this));
+        models.push(binding.model);
+        delete self._modelBindings[i];
+      });
+
+      // Trigger an event for each model that was unbound.
+      _.each(_.uniq(models), function(m) {m.trigger('stickit:unstuck', self.cid)});
+      // Cleanup the null values.
       this._modelBindings = _.compact(this._modelBindings);
 
       this.$el.off('.stickit' + (model ? '.' + model.cid : ''));
@@ -84,6 +90,8 @@
         // Create the model set options with a unique `bindId` so that we
         // can avoid double-binding in the `change:attribute` event handler.
         config.bindId = bindId;
+        // Add a reference to the view for handlers of stickitChange events
+        config.view = self;
         options = _.extend({stickitChange:config}, config.setOptions || {});
 
         initializeAttributes(self, $el, config, model, modelAttr);
@@ -116,6 +124,10 @@
 
           updateViewBindEl(self, $el, config, getAttr(model, modelAttr, config, self), model, true);
         }
+
+        model.on('stickit:unstuck', function(cid) {
+          if (cid == self.cid) applyViewFn(self, config.destroy, $el, model, config);
+        });
 
         // After each binding is setup, call the `initialize` callback.
         applyViewFn(self, config.initialize, $el, model, config);
@@ -280,7 +292,7 @@
   //
   var updateViewBindEl = function(view, $el, config, val, model, isInitializing) {
     if (!evaluateBoolean(view, config.updateView, val, config)) return;
-    config.update.call(view, $el, val, model, config);
+    applyViewFn(view, config.update, $el, val, model, config);
     if (!isInitializing) applyViewFn(view, config.afterUpdate, $el, val, config);
   };
 
@@ -296,9 +308,7 @@
     events: ['propertychange', 'input', 'change'],
     update: function($el, val) { $el.val(val); },
     getVal: function($el) {
-      var val = $el.val();
-      if ($el.is('[type="number"]')) return val == null ? val : Number(val);
-      else return val;
+      return $el.val();
     }
   }, {
     selector: 'textarea',
@@ -392,11 +402,6 @@
       selectConfig.labelPath = selectConfig.labelPath || 'label';
 
       var addSelectOptions = function(optList, $el, fieldVal) {
-        // Add a flag for default option at the beginning of the list.
-        if (selectConfig.defaultOption) {
-          optList = _.clone(optList);
-          optList.unshift('__default__');
-        }
         _.each(optList, function(obj) {
           var option = $('<option/>'), optionVal = obj;
 
@@ -445,11 +450,15 @@
       // Support Backbone.Collection and deserialize.
       if (optList instanceof Backbone.Collection) optList = optList.toJSON();
 
+      if (selectConfig.defaultOption) {
+        addSelectOptions(["__default__"], $el)
+      }
+
       if (_.isArray(optList)) {
         addSelectOptions(optList, $el, val);
-      } else {
-        // If the optList is an object, then it should be used to define an optgroup. An
-        // optgroup object configuration looks like the following:
+      } else if (optList.opt_labels) {
+        // To define a select with optgroups, format selectOptions.collection as an object
+        // with an 'opt_labels' property, as in the following:
         //
         //     {
         //       'opt_labels': ['Looney Tunes', 'Three Stooges'],
@@ -462,6 +471,17 @@
           addSelectOptions(optList[label], $group, val);
           $el.append($group);
         });
+        // With no 'opt_labels' parameter, the object is assumed to be a simple value-label map.
+        // Pass a selectOptions.comparator to override the default order of alphabetical by label.
+      } else {
+        var opts = [], opt;
+        for (var i in optList) {
+          opt = {};
+          opt[selectConfig.valuePath] = i;
+          opt[selectConfig.labelPath] = optList[i];
+          opts.push(opt);
+        }
+        addSelectOptions(_.sortBy(opts, selectConfig.comparator || selectConfig.labelPath), $el, val);
       }
     },
     getVal: function($el) {
